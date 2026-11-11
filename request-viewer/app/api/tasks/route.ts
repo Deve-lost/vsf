@@ -3,7 +3,7 @@ import pool from "../../../db";
 export async function GET(req: Request) {
 
     try {
-        const result = await pool.query("SELECT * FROM swap_tasks");
+        const result = await pool.pool.query("SELECT * FROM swap_tasks");
         return new Response(JSON.stringify(result.rows), {
             status: 200,
             headers: { "content-type": "application/json" },

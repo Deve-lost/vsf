@@ -3,7 +3,14 @@ import gzip
 import json
 from pathlib import Path
 from typing import List, Optional
-import braveblock
+try:
+    import braveblock
+except ImportError:
+    # braveblock ships no linux/aarch64 wheel (e.g. Apple Silicon hosts under
+    # Docker), so it may be unavailable there. Fall back to a no-op adblocker:
+    # requests are never blocked, which only matters for ad/tracker filtering
+    # noise and is harmless against a private app with no ad/tracker calls.
+    braveblock = None
 from urllib.parse import urlparse
 
 import re
@@ -35,10 +42,21 @@ rules += _read_from_filterlist_gzip(
 )
 rules += config.ADDITIONAL_BLOCK_RULES
 
-ADBLOCKER = braveblock.Adblocker(
-    rules=rules,
-    include_easylist=False,
-    include_easyprivacy=False,
+class _NullAdblocker:
+    """No-op stand-in used when braveblock is unavailable on this platform."""
+
+    def check_network_urls(self, *args, **kwargs):
+        return False
+
+
+ADBLOCKER = (
+    braveblock.Adblocker(
+        rules=rules,
+        include_easylist=False,
+        include_easyprivacy=False,
+    )
+    if braveblock is not None
+    else _NullAdblocker()
 )
 # Mapping from playwright to braveblock
 ADBLOCKER_RESOURCE_TYPE_MAPPING = {

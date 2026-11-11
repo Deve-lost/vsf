@@ -9,6 +9,9 @@ RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 RUN apt-get update -y
 RUN apt-get upgrade -y
 RUN apt-get install -y build-essential software-properties-common libzmq3-dev
+# libcurl4-openssl-dev provides curl-config, required to build the node-libcurl
+# native binding (no prebuilt binary is published for some platforms, e.g. arm64)
+RUN apt-get install -y libcurl4-openssl-dev
 RUN apt-get install cmake -y
 RUN apt-get install xvfb -y
 
@@ -97,9 +100,12 @@ RUN npm i
 WORKDIR /
 
 # ========== Add tools for the analysis ==========
-RUN wget https://github.com/dandavison/delta/releases/download/0.17.0/git-delta-musl_0.17.0_amd64.deb
-RUN dpkg -i git-delta-musl_0.17.0_amd64.deb
-RUN rm git-delta-musl_0.17.0_amd64.deb
+# Pick the .deb matching the build architecture (e.g. arm64 on Apple Silicon hosts).
+# Only the glibc-linked build is published for arm64, so use that variant for all archs.
+RUN ARCH=$(dpkg --print-architecture) && \
+    wget https://github.com/dandavison/delta/releases/download/0.17.0/git-delta_0.17.0_${ARCH}.deb && \
+    dpkg -i git-delta_0.17.0_${ARCH}.deb && \
+    rm git-delta_0.17.0_${ARCH}.deb
 
 # install ansifilter for delta-->html
 RUN wget http://andre-simon.de/zip/ansifilter-2.20.tar.bz2
@@ -117,7 +123,12 @@ RUN mkdir /analysis
 
 # Python requirements
 COPY ./analysis/requirements.txt /analysis/requirements.txt
-RUN pip3 install -r /analysis/requirements.txt 
+# braveblock publishes no linux/aarch64 wheel (e.g. Apple Silicon hosts), so
+# install everything else first and let braveblock fail non-fatally there;
+# prefilter.py falls back to a no-op adblocker when it's missing.
+RUN grep -v '^braveblock' /analysis/requirements.txt > /tmp/requirements-no-braveblock.txt && \
+    pip3 install -r /tmp/requirements-no-braveblock.txt && \
+    (pip3 install braveblock==0.5.1 || echo "braveblock unavailable for this platform, skipping (ad-block prefiltering will be a no-op)")
 RUN apt-get install -y vim
 
 # Analysis source
